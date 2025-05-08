@@ -1,0 +1,7 @@
+.env
+.venv
+results/*
+uploads/*
+__pycache__
+*.csv
+*_snapshot*

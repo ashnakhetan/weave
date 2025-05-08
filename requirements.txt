@@ -1,0 +1,15 @@
+flask
+pandas
+numpy
+papermill
+nest-asyncio
+openpyxl
+xlrd
+
+langchain-core>=0.3.56
+langchain-openai>=0.3.14
+langchain-community>=0.3.22
+google-generativeai>=0.1.0
+langchain[openai]>=0.1.0
+pypdf>=5.4.0
+ace-tools>=0.0

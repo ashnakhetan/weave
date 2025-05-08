@@ -1,0 +1,21 @@
+<h1 class="text-2xl font-semibold mb-6">Step 1: Upload Task Info</h1>
+<form action="/step1" method="POST" enctype="multipart/form-data" class="space-y-6 max-w-md">
+  <div>
+    <label for="task_description" class="block text-sm font-medium text-gray-700">Task Description File</label>
+    <input type="file" name="task_description" id="task_description" required
+           class="mt-1 block w-full border border-gray-300 rounded-lg shadow-sm p-2 text-sm">
+    <p class="text-xs text-gray-500 mt-1">Upload a short description of the task or goal you're working on.</p>
+  </div>
+
+  <div>
+    <label for="data_documentation" class="block text-sm font-medium text-gray-700">Data Documentation File</label>
+    <input type="file" name="data_documentation" id="data_documentation" required
+           class="mt-1 block w-full border border-gray-300 rounded-lg shadow-sm p-2 text-sm">
+    <p class="text-xs text-gray-500 mt-1">Include any documentation or notes that explain the data sources.</p>
+  </div>
+
+  <button type="submit"
+          class="bg-blue-600 text-white font-semibold px-4 py-2 rounded hover:bg-blue-700 transition">
+    Next →
+  </button>
+</form>

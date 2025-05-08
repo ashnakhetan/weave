@@ -1,0 +1,50 @@
+<h1 class="text-2xl font-semibold mb-6">Step 2: Upload Data Sections</h1>
+<form id="dataForm" action="/step2" method="POST" enctype="multipart/form-data" class="space-y-6 max-w-xl">
+  <input type="hidden" name="data_section_count" id="data_section_count">
+  <div id="data-sections" class="space-y-6"></div>
+
+  <button type="button" onclick="addDataSection()"
+          class="bg-gray-100 border border-gray-300 px-4 py-2 rounded hover:bg-gray-200 transition text-sm">
+    + Add Data Section
+  </button>
+
+  <div class="flex items-center space-x-2">
+    <input type="checkbox" name="use_original_filenames" id="use_original_filenames" value="true"
+           class="h-4 w-4 text-blue-600 border-gray-300 rounded">
+    <label for="use_original_filenames" class="text-sm text-gray-700">Use original filenames</label>
+  </div>
+
+  <button type="submit"
+          class="bg-blue-600 text-white font-semibold px-4 py-2 rounded hover:bg-blue-700 transition">
+    Next →
+  </button>
+</form>
+
+<script>
+  let count = 0;
+  function addDataSection() {
+    const div = document.createElement('div');
+    div.className = "p-4 border border-gray-300 rounded-lg space-y-4";
+    div.innerHTML = `
+      <h2 class="font-medium text-gray-800">Section ${count + 1}</h2>
+      <div>
+        <label class="block text-sm font-medium text-gray-700">Section Name</label>
+        <input type="text" name="data_name_${count}" required
+               class="mt-1 block w-full border border-gray-300 rounded p-2 text-sm">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700">Metadata File</label>
+        <input type="file" name="data_metadata_${count}" required
+               class="mt-1 block w-full border border-gray-300 rounded p-2 text-sm">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700">Data File(s)</label>
+        <input type="file" name="data_data_${count}" multiple required
+               class="mt-1 block w-full border border-gray-300 rounded p-2 text-sm">
+      </div>
+    `;
+    document.getElementById("data-sections").appendChild(div);
+    count++;
+    document.getElementById("data_section_count").value = count;
+  }
+</script>
