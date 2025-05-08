@@ -11,7 +11,7 @@ Original file is located at
 
 import pandas as pd
 import os
-from utils import load_pdf, extract_all_sections, load_xls, sheet_to_text, map_section_to_page_number, parquet_viewer, run_code_and_capture_df
+from utils.pipeline_utils import load_pdf, extract_all_sections, load_xls, sheet_to_text, map_section_to_page_number, parquet_viewer, run_code_and_capture_df
 import google.generativeai as genai
 import nest_asyncio
 import asyncio

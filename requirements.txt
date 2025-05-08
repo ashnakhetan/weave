@@ -5,6 +5,7 @@ papermill
 nest-asyncio
 openpyxl
 xlrd
+fastparquet
 
 langchain-core>=0.3.56
 langchain-openai>=0.3.14

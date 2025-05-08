@@ -11,17 +11,29 @@ async def find_relevant_datasets(spec_file_path, dataset_details_path):
     Returns:
         tuple: (list of relevant dataset names, specification summary)
     """
-    from langchain_community.document_loaders import PyPDFLoader
+    from langchain_community.document_loaders import PyPDFLoader, TextLoader
     from langchain_core.vectorstores import InMemoryVectorStore
     from langchain_openai import OpenAIEmbeddings, ChatOpenAI
     from langchain_core.prompts import ChatPromptTemplate
     from langchain_core.output_parsers import CommaSeparatedListOutputParser
+    import os
 
-    # Load specification file
-    spec_loader = PyPDFLoader(spec_file_path)
     specs = []
-    async for spec in spec_loader.alazy_load():
-        specs.append(spec)
+    
+    # Load specification file
+    if os.path.exists(spec_file_path + ".pdf"):
+        spec_file_path += ".pdf"
+        spec_loader = PyPDFLoader(spec_file_path)
+        async for spec in spec_loader.alazy_load():
+            specs.append(spec)
+
+    elif os.path.exists(spec_file_path + ".txt"):
+        spec_file_path += ".txt"
+        spec_loader = TextLoader(spec_file_path)
+        specs = [spec_loader.load()[0]]  # returns a list with one Document
+
+    else:
+        raise FileNotFoundError("No .pdf or .txt found for spec file.")
 
     # Extract specification text
     spec_text = " ".join([spec.page_content for spec in specs])

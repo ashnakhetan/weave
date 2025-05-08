@@ -1,21 +1,39 @@
-<h1 class="text-2xl font-semibold mb-6">Step 1: Upload Task Info</h1>
-<form action="/step1" method="POST" enctype="multipart/form-data" class="space-y-6 max-w-md">
-  <div>
-    <label for="task_description" class="block text-sm font-medium text-gray-700">Task Description File</label>
-    <input type="file" name="task_description" id="task_description" required
-           class="mt-1 block w-full border border-gray-300 rounded-lg shadow-sm p-2 text-sm">
-    <p class="text-xs text-gray-500 mt-1">Upload a short description of the task or goal you're working on.</p>
-  </div>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Step 1: Upload</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 min-h-screen flex items-center justify-center px-4">
+  <div class="bg-white p-8 rounded-xl shadow-lg w-full max-w-2xl">
+    <h1 class="text-2xl font-semibold mb-6 text-gray-800">Step 1: Upload Task Info</h1>
+    <form action="/step1" method="POST" enctype="multipart/form-data" class="space-y-6">
+      <div>
+        <label for="task_description" class="block text-sm font-medium text-gray-700">Task Description File</label>
+        <input type="file" name="task_description" id="task_description" required
+               class="mt-1 block w-full border border-gray-300 rounded-lg shadow-sm p-2 text-sm">
+        <p class="text-xs text-gray-500 mt-1">Upload any documentation you have of the task or goal you're working on.</p>
+      </div>
 
-  <div>
-    <label for="data_documentation" class="block text-sm font-medium text-gray-700">Data Documentation File</label>
-    <input type="file" name="data_documentation" id="data_documentation" required
-           class="mt-1 block w-full border border-gray-300 rounded-lg shadow-sm p-2 text-sm">
-    <p class="text-xs text-gray-500 mt-1">Include any documentation or notes that explain the data sources.</p>
-  </div>
+      <div>
+        <label for="data_documentation" class="block text-sm font-medium text-gray-700">Data Documentation File</label>
+        <input type="file" name="data_documentation" id="data_documentation" required
+               class="mt-1 block w-full border border-gray-300 rounded-lg shadow-sm p-2 text-sm">
+        <p class="text-xs text-gray-500 mt-1">Include any documentation or notes that explain the data sources. This includes column mappings, code keys, and a description of the data structure.</p>
+      </div>
 
-  <button type="submit"
-          class="bg-blue-600 text-white font-semibold px-4 py-2 rounded hover:bg-blue-700 transition">
-    Next →
-  </button>
-</form>
+      <a href="{{ url_for('load_sample_data', next='step2') }}"
+        class="text-sm text-blue-600 hover:underline float-right">
+        → Go with Sample Data
+      </a>
+   
+
+      <button type="submit"
+              class="bg-blue-600 text-white font-semibold px-4 py-2 rounded hover:bg-blue-700 transition">
+        Next →
+      </button>
+    </form>
+  </div>
+</body>
+</html>

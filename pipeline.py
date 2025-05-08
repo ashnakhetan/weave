@@ -11,7 +11,7 @@ Original file is located at
 
 import pandas as pd
 import os
-from utils import load_pdf, extract_all_sections, load_xls, sheet_to_text, map_section_to_page_number, parquet_viewer, run_code_and_capture_df
+from utils.pipeline_utils import load_pdf, extract_all_sections, load_xls, sheet_to_text, map_section_to_page_number, parquet_viewer, run_code_and_capture_df
 import google.generativeai as genai
 import nest_asyncio
 import asyncio
@@ -27,8 +27,9 @@ from modules.p1 import analyze_datasets, find_relevant_datasets
 
 UPLOAD_FOLDER = os.getenv("UPLOAD_FOLDER") or 'uploads'
 SUMMARY_PATH = 'summary.csv'
+STATIC_FOLDER = os.getenv("STATIC_FOLDER") or 'static'
 
-def run(file_paths, output_dir):
+def run_part_1_2_module_field_selection(file_paths, output_dir):
   """ Check inputs  """
   for path in file_paths:
         print(f"Processing {path}...")
@@ -126,8 +127,12 @@ def run(file_paths, output_dir):
   for section in section_fields_dict.keys():
     list_reasons.extend(section_fields_dict[section].column_selection_mapping)
   summary_df = pd.DataFrame.from_records(vars(o) for o in list_reasons)
+  
+  # save to result and static folders
   summary_csv_path = os.path.join(output_dir, OUTPUT_METADATA_PATH, SUMMARY_PATH)
   summary_df.to_csv(summary_csv_path)
+  summary_static_path = os.path.join('static', 'summary.csv')
+  summary_df.to_csv(summary_static_path)
 
   # question maps
   question_map_parsed_dict = {}
@@ -146,12 +151,19 @@ def run(file_paths, output_dir):
 
   """# *Field Selection Output:*"""
 
-  print(f"Snipped of fields selected with reasoning. Results saved to {summary_csv_path}")
-  summary_df.head(5)
+  print(f"\nSnipped of fields selected with reasoning. Results saved to {summary_csv_path}")
 
-  print(f"Map of column code to question asked. Results saved to {cur_question_map_path}")
-  cur_question_map_df.tail()
+  print(f"\nMap of column code to question asked. Results saved to {cur_question_map_path}")
 
+  return {
+        'success': True,
+        'summary_csv': summary_csv_path,
+        'question_map_csv': cur_question_map_path,
+        'selected_sections': selected_sections,
+        'field_summary': summary_df.head(10).to_dict(orient='records')
+    }
+
+def run_part_3_transform_data(file_paths, output_dir):
   """# Part 3: Transform Data
 
   Given the data, mapping metadata, and final schema, perform data transformations to generate a dataset. This steps seeks external data if needed (e.g. currency conversions, cost lookup).
@@ -159,19 +171,11 @@ def run(file_paths, output_dir):
 
   # if summary_df has already been saved to a csv, no need to rerun everything
   # should not really need this part, but maybe for when we submit multiple jobs
-  # summary_df = None
-  # summary_csv_path = os.path.join(output_dir, SUMMARY_PATH)
-  # if os.path.exists(summary_csv_path):
-  #   summary_df = pd.read_csv(summary_csv_path)
-  #   selected_sections = ['GSEC1', 'GSEC2', 'GSEC4', 'GSEC9', 'GSEC14', 'GSEC12_1', 'GSEC7_1', 'CSEC1A', 'CSEC2']
-
-  #   folder_to_questionnaire = {
-  #     # 'agriculture': Category('Agric', 'AGSEC',  'agriculture_qx.pdf'),
-  #     'community': Category('Community', 'CSEC',  "unps_community.pdf"),
-  #     'household': Category('HH', 'GSEC',  "unps_hhq.pdf"),
-  #     # 'woman': Category('Woman', 'WSEC',  "unps_woman.pdf"),
-  #   }
-  # summary_df.head()
+  summary_df = None
+  summary_csv_path = file_paths['summary_csv']
+  if os.path.exists(summary_csv_path):
+    summary_df = pd.read_csv(summary_csv_path)
+    selected_sections = ['GSEC1', 'GSEC2', 'GSEC4', 'GSEC9', 'GSEC14', 'GSEC12_1', 'GSEC7_1', 'CSEC1A', 'CSEC2']
 
   # CORRECT COLUMNS TO ALLOW FOR MULTIPLE CODING FORMATS (different prefixes)
   columns_to_keep = list(summary_df[summary_df['is_selected'] == True]['column_code'])
@@ -184,69 +188,121 @@ def run(file_paths, output_dir):
   print("Also renaming columns based on this map:", col_rename_map)
 
   result = None
+  data_sections = file_paths['data_sections']
   # first, from data folder, only get datasets that were selected
   for category in data_sections.keys():
     folder_path = data_sections[category]['folder_path']
     all_data_files = os.listdir(folder_path)
     for data_file in all_data_files:
-      if data_file.replace('.csv', '') not in selected_sections:
+      print(f"Considering: {data_file}...")
+      # hacky, but this is how we match CSEC1 format
+      if data_file.replace('.csv', '').replace('_', '') not in selected_sections:
         continue
       # proceed with dataset
-      data_file_csv = pd.read_csv(f'{folder_path}/{data_file}')
-      print(data_file_csv.head())
+      print(f"Merging with {data_file}")
+      data_file = pd.read_csv(f'{folder_path}/{data_file}')
+      print(data_file.head())
       # only keep columns we are supposed to
-      current_columns_to_keep = list(set(columns_to_keep_corrected).intersection(data_file_csv.columns))
-      filtered_df_corrected = data_file_csv[current_columns_to_keep]
-  # join the datasets
+      current_columns_to_keep = list(set(columns_to_keep_corrected).intersection(data_file.columns))
+      filtered_df_corrected = data_file[current_columns_to_keep]
+      # join the datasets
+      # Determine available merge keys
       if result is None:
-        result = filtered_df_corrected
+         result = filtered_df_corrected
       else:
-        try:
-          result = result.merge(filtered_df_corrected, left_on='hhid', right_on='hhid', how='outer')
-        except:
-          try:
-            result = result.merge(filtered_df_corrected, left_on='EA_code', right_on='hhid', how='outer')
-          except:
-            try:
-              result = result.merge(filtered_df_corrected, left_on='hhid', right_on='EA_code', how='outer')
-            except:
-              try:
-                result = result.merge(filtered_df_corrected, left_on='EA_code', right_on='EA_code', how='outer')
-              except:
-                print(filtered_df_corrected.columns, result.columns)
+        merge_key = next((k for k in ['hhid', 'EA_code'] if k in result.columns and k in filtered_df_corrected.columns), None)
+        if not merge_key:
+            print(f"⚠️ No common key to merge on for {data_file}. Skipping.")
+            continue
+        result = result.merge(filtered_df_corrected, on=merge_key, how='outer')
+        # merge_keys = ['hhid', 'EA_code']
+        # left_keys = [k for k in merge_keys if k in result.columns] if result is not None else []
+        # right_keys = [k for k in merge_keys if k in filtered_df_corrected.columns]
 
-      columns_to_agg = [col for col in current_columns_to_keep if col.startswith('h') or col.startswith('s') and col != 'hhid']
-      try:
-        result = result.groupby('hhid')[columns_to_agg].sum().reset_index(drop=False)
-      except:
-        try:
-          result = result.groupby('EA_code')[columns_to_agg].sum().reset_index(drop=False)
-        except:
-          continue
+        # # Try merging on shared key
+        # merged = None
+        # for lk in left_keys:
+        #     for rk in right_keys:
+        #         try:
+        #             merged = result.merge(filtered_df_corrected, left_on=lk, right_on=rk, how='outer') if result is not None else filtered_df_corrected
+        #             print(f"Merged on {lk} ⇄ {rk}")
+        #             break
+        #         except Exception as e:
+        #             continue
+        #     if merged is not None:
+        #         break
 
+        # if merged is not None:
+        #     result = merged
+        # else:
+        #     print(f"⚠️ Could not merge with: {filtered_df_corrected.columns.tolist()}")
+        #     continue
 
-  result.rename(columns=col_rename_map, inplace=True)
-  result.rename(columns={'hhid_y':'hhid'}, inplace=True)
-  result = result.dropna(axis=1, how='all') # drop columns where all values are NaN
-  result = result.drop(columns=['hhid_x', 'EA_code'])
-  result = result.drop_duplicates()
+  if result is not None:
+    group_key = 'hhid' if 'hhid' in result.columns else 'EA_code' if 'EA_code' in result.columns else None
+    if group_key:
+        columns_to_agg = [col for col in result.columns if col.startswith(('h', 's')) and col != group_key]
+        result = result.groupby(group_key)[columns_to_agg].sum().reset_index()
+    else:
+        print("⚠️ No valid group key found for final aggregation.")
 
-  column_to_move = result.pop('hhid')
-  result.insert(0, 'hhid', column_to_move) #inserts hhid at the beginning
+      # if result is None:
+      #   result = filtered_df_corrected
+      # else:
+      #   try:
+      #     result = result.merge(filtered_df_corrected, left_on='hhid', right_on='hhid', how='outer')
+      #   except:
+      #     try:
+      #       result = result.merge(filtered_df_corrected, left_on='EA_code', right_on='hhid', how='outer')
+      #     except:
+      #       try:
+      #         result = result.merge(filtered_df_corrected, left_on='hhid', right_on='EA_code', how='outer')
+      #       except:
+      #         try:
+      #           result = result.merge(filtered_df_corrected, left_on='EA_code', right_on='EA_code', how='outer')
+      #           print("did this")
+      #         except:
+      #           print(filtered_df_corrected.columns, result.columns)
 
-  # import ace_tools as tools; tools.display_dataframe_to_user(name="Filtered Household Data", dataframe=filtered_df_corrected)
-  print("Filtered, aggregated, + renamed dataset...")
-  result.head(10)
-  # ADD QUESTION TO HEADER
+      # columns_to_agg = [col for col in current_columns_to_keep if col.startswith('h') or col.startswith('s') and col != 'hhid']
+      # try:
+      #   result = result.groupby('hhid')[columns_to_agg].sum().reset_index(drop=False)
+      # except:
+      #   try:
+      #     result = result.groupby('EA_code')[columns_to_agg].sum().reset_index(drop=False)
+      #     print("did this too")
+      #   except:
+      #     continue
 
-  """# *Filtered + Aggregated + Merged Dataset Output*"""
+    result.rename(columns=col_rename_map, inplace=True)
+    result.rename(columns={'hhid_y':'hhid'}, inplace=True)
+    result = result.dropna(axis=1, how='all') # drop columns where all values are NaN
+    result = result.drop(columns=[col for col in ['hhid_x'] if col in result.columns])
+    result = result.drop_duplicates()
 
-  print("List of (fuzzy) column codes to keep:", columns_to_keep_corrected, "\n")
-  print("Also renaming columns based on this map:", col_rename_map, "\n")
-  print("List of columns that were aggregated per household:", columns_to_agg, '\n')
-  result.head(10)
+    for key in ['hhid', 'EA_code']:
+      if key in result.columns:
+          col = result.pop(key)
+          result.insert(0, key, col) # insert key col at beginning
 
-  result.to_csv('generated_dataset.csv')
+    # import ace_tools as tools; tools.display_dataframe_to_user(name="Filtered Household Data", dataframe=filtered_df_corrected)
+    print("Filtered, aggregated, + renamed dataset...")
+    result.head(10)
+    # ADD QUESTION TO HEADER
+
+    """# *Filtered + Aggregated + Merged Dataset Output*"""
+
+    print("List of (fuzzy) column codes to keep:", columns_to_keep_corrected, "\n")
+    print("Also renaming columns based on this map:", col_rename_map, "\n")
+    print("List of columns that were aggregated per household:", columns_to_agg, '\n')
+    
+    # save!
+    result_path = os.path.join(output_dir, 'generated_dataset.csv')
+    result.to_csv(result_path)
+  else: # if no result, return success with fail message
+    print("no similarities found :(")
+    return {'success': False, 'message': 'No similarities found. Dataset was not generated.'}
+
 
   result = pd.read_csv('generated_dataset.csv')
   reverse_map = {v: k for k, v in col_rename_map.items()}
@@ -281,12 +337,6 @@ def run(file_paths, output_dir):
   df = pd.read_csv('generated_dataset.csv')
   df.head()
 
-  """Compare this to the student's work:"""
-
-  pd.read_parquet("../summary.parquet").head(123)
-
-  pd.read_parquet('../uganda_full.parquet')
-
   """# Part 4: Data Cleaning
 
   Not implemented. Will include:
@@ -295,3 +345,4 @@ def run(file_paths, output_dir):
   - normalization across data sources.
   """
 
+  return {'success': True, 'filename': 'generated_dataset.csv'}

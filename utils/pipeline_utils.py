@@ -7,6 +7,7 @@ from langchain_community.document_loaders import PyPDFLoader
 import io
 import contextlib
 import google.generativeai as genai
+from google.generativeai.types import content_types
 import pandas as pd
 
 UPLOAD_FOLDER = os.getenv('UPLOAD_FOLDER') or 'uploads'
@@ -58,20 +59,6 @@ def sheet_to_text(sheet):
   return output
 
 def map_section_to_page_number(file_path):
-  """
-  Takes a path to a PDF file and returns a map of section names to page numbers.
-  
-  The section names are the strings on the left side of the colon in the extract_instructions string.
-  The page numbers are the numbers on the right side of the colon, comma-separated.
-  
-  The function uses the gemini-1.5-flash model to generate the map.
-  
-  Args:
-    file_path (str): The path to the PDF file.
-  
-  Returns:
-    dict: A dictionary of section names to page numbers.
-  """
   genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
   model = genai.GenerativeModel('gemini-1.5-flash')
   sample_file = genai.upload_file(path=file_path, display_name="Agriculture Questionnaire")
