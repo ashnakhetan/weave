@@ -12,6 +12,8 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(RESULT_FOLDER, exist_ok=True)
 
 app = Flask(__name__)
+HOST = os.getenv('HOST') or '0.0.0.0'
+PORT = int(os.getenv('PORT')) or 10000
 app.secret_key = os.getenv('SECRET_KEY') or 'forager'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['RESULT_FOLDER'] = RESULT_FOLDER
@@ -115,4 +117,4 @@ def download(filename):
     return send_from_directory(RESULT_FOLDER, filename, as_attachment=True)
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host=HOST, port=PORT, debug=True)
