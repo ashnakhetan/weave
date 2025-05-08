@@ -13,7 +13,7 @@ os.makedirs(RESULT_FOLDER, exist_ok=True)
 
 app = Flask(__name__)
 HOST = os.getenv('HOST') or '0.0.0.0'
-PORT = int(os.getenv('PORT')) or 10000
+PORT = int(os.getenv('PORT') or 10000)
 app.secret_key = os.getenv('SECRET_KEY') or 'forager'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['RESULT_FOLDER'] = RESULT_FOLDER
