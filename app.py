@@ -154,6 +154,11 @@ def transform_data():
     print("Saved Files @ Transform step:", saved_files)
     result = pipeline.run_part_3_transform_data(saved_files, RESULT_FOLDER)
 
+    import shutil
+
+    shutil.rmtree(app.config['UPLOAD_FOLDER'], ignore_errors=True)
+    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)  # recreate it fresh
+
     if result.get('success'):
         return redirect(url_for('download_ready'))
     else:
@@ -176,15 +181,20 @@ def download(filename):
 def load_sample_data():
     import shutil
 
-    task_description = find_file_by_stem(UPLOAD_FOLDER, 'task_description')
-    data_documentation = find_file_by_stem(UPLOAD_FOLDER, 'data_documentation')
+    task_src = find_file_by_stem(SAMPLE_DATA_FOLDER, 'task_description')
+    doc_src = find_file_by_stem(SAMPLE_DATA_FOLDER, 'data_documentation')
 
-    # Clear & copy task + doc
-    shutil.copy(f'{SAMPLE_DATA_FOLDER}/task_description{os.path.splitext(task_description)[1]}', task_description)
-    shutil.copy(f'{SAMPLE_DATA_FOLDER}/data_documentation{os.path.splitext(data_documentation)[1]}', data_documentation)
+    task_ext = os.path.splitext(task_src)[1]
+    doc_ext = os.path.splitext(doc_src)[1]
 
-    session['task_description'] = task_description
-    session['data_documentation'] = data_documentation
+    task_dst = os.path.join(UPLOAD_FOLDER, f'task_description{task_ext}')
+    doc_dst = os.path.join(UPLOAD_FOLDER, f'data_documentation{doc_ext}')
+    
+    shutil.copy(task_src, task_dst)
+    shutil.copy(doc_src, doc_dst)
+
+    session['task_description'] = task_dst
+    session['data_documentation'] = doc_dst
     session['use_original_filenames'] = True  # or False
 
     data_sections = {}

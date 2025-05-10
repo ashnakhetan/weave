@@ -38,20 +38,23 @@ def run_part_1_2_module_field_selection(file_paths, output_dir):
 
   These surveys come with dozens of datasets/modules. Filter for relevancy. This step includes translation.
   """
-  spec_file = f"{UPLOAD_FOLDER}/task_description"
-  dataset_file = f"{UPLOAD_FOLDER}/data_documentation"
+  # spec_file = f"{UPLOAD_FOLDER}/task_description"
+  # dataset_file = f"{UPLOAD_FOLDER}/data_documentation"
+  spec_file = file_paths['task_description']
+  dataset_file = file_paths['data_documentation']
 
   # Apply nest_asyncio for Jupyter
   nest_asyncio.apply()
 
   selected_sections = ['GSEC1', 'GSEC2', 'GSEC4', 'GSEC9', 'GSEC14', 'GSEC12_1', 'GSEC7_1', 'CSEC1A', 'CSEC2']
+  selected_sections = []
 
   print(f"Analyzing datasets in {dataset_file} to determine relevant ones....")
   print(f"Using {spec_file} to guide 'relevancy'....")
-  results = asyncio.run(analyze_datasets(spec_file, dataset_file))
-  print("The selected sections we proceed with are", results)
+  relevant_files, all_datasets, dataset_names = asyncio.run(analyze_datasets(spec_file, dataset_file))
+  print("The selected sections we proceed with are", dataset_names)
 
-
+  selected_sections = dataset_names
 
   """######## ------ PART 2: RELEVANT FIELD SELECTION ------- #########
 
@@ -67,6 +70,7 @@ def run_part_1_2_module_field_selection(file_paths, output_dir):
   fields_dict = {}
   question_map = {}
   section_pdf_page_maps = {}
+  list_reasons = []
 
   llm = init_chat_model("gpt-4o-mini", model_provider="openai")
   mapping_llm = llm.with_structured_output(schema=ColumnMapping)
@@ -94,8 +98,8 @@ def run_part_1_2_module_field_selection(file_paths, output_dir):
     section_question_mappings = {}
     for section in section_pdf_page_map: # for each section (eventually this list will depend on phase 1)
       full_section_name = category_prefix + section.upper()
-      if full_section_name not in selected_sections:  # only select for selected sections
-        continue
+      # if full_section_name not in selected_sections:  # only select for selected sections
+      #   continue
       print("Working on", full_section_name, "...")
       section_questionnaire_pages = [page.page_content for page in load_pdf(metadata_path, section_pdf_page_map[section])]
       section_text = f"The section that we are focusing on is: {section}. "
@@ -109,9 +113,11 @@ def run_part_1_2_module_field_selection(file_paths, output_dir):
 
       # now, select relevant fields
       prompt = field_selection_prompt_template.invoke({"text": '\n\n'.join([field_selection_instructions, str(mapping)])})
+      print("prompt", prompt)
       fields_with_reasoning = selection_llm.invoke(prompt)
-      # print("Selected fields, with reasoning:", fields_with_reasoning, '\n')
+      print("Selected fields, with reasoning:", fields_with_reasoning, '\n')
       section_fields_dict[mapping.section_name] = fields_with_reasoning
+      list_reasons.extend(fields_with_reasoning.column_selection_mapping)
 
     fields_dict[category] = section_fields_dict
     question_map[category] = section_question_mappings
@@ -123,9 +129,9 @@ def run_part_1_2_module_field_selection(file_paths, output_dir):
   os.makedirs(os.path.join(output_dir, OUTPUT_METADATA_PATH), exist_ok=True)
 
   # field selection
-  list_reasons = []
-  for section in section_fields_dict.keys():
-    list_reasons.extend(section_fields_dict[section].column_selection_mapping)
+  # list_reasons = []
+  # for section in section_fields_dict.keys():
+  #   list_reasons.extend(section_fields_dict[section].column_selection_mapping)
   summary_df = pd.DataFrame.from_records(vars(o) for o in list_reasons)
   
   # save to result and static folders
@@ -164,185 +170,131 @@ def run_part_1_2_module_field_selection(file_paths, output_dir):
     }
 
 def run_part_3_transform_data(file_paths, output_dir):
-  """# Part 3: Transform Data
+    import pandas as pd
+    import os
 
-  Given the data, mapping metadata, and final schema, perform data transformations to generate a dataset. This steps seeks external data if needed (e.g. currency conversions, cost lookup).
-  """
-
-  # if summary_df has already been saved to a csv, no need to rerun everything
-  # should not really need this part, but maybe for when we submit multiple jobs
-  summary_df = None
-  summary_csv_path = file_paths['summary_csv']
-  if os.path.exists(summary_csv_path):
+    summary_csv_path = file_paths['summary_csv']
+    selected_sections = file_paths['selected_sections']
     summary_df = pd.read_csv(summary_csv_path)
-    selected_sections = ['GSEC1', 'GSEC2', 'GSEC4', 'GSEC9', 'GSEC14', 'GSEC12_1', 'GSEC7_1', 'CSEC1A', 'CSEC2']
 
-  # CORRECT COLUMNS TO ALLOW FOR MULTIPLE CODING FORMATS (different prefixes)
-  columns_to_keep = list(summary_df[summary_df['is_selected'] == True]['column_code'])
-  columns_to_keep_corrected = columns_to_keep
-  # columns_to_keep_corrected = [column.replace('0', '') if column.find('0') == 1 else column for column in columns_to_keep ]
-  # columns_to_keep_corrected.extend([column.replace('0', '').replace('s', 'h') if column.find('0') == 1 else column for column in columns_to_keep])
-  columns_to_keep_corrected.extend(['hhid', 'PID', 'pid_unps', 't0_hhid', 'EA_code', 't0_EA_code', 'interview__key'])
-  col_rename_map = dict(zip(summary_df['column_code'], summary_df['column_question']))
-  print("List of (fuzzy) column codes to keep:", columns_to_keep_corrected, "\n")
-  print("Also renaming columns based on this map:", col_rename_map)
+    columns_to_keep = list(summary_df[summary_df['is_selected'] == True]['column_code'])
+    columns_to_keep_corrected = columns_to_keep.copy()
 
-  result = None
-  data_sections = file_paths['data_sections']
-  # first, from data folder, only get datasets that were selected
-  for category in data_sections.keys():
-    folder_path = data_sections[category]['folder_path']
-    all_data_files = os.listdir(folder_path)
-    for data_file in all_data_files:
-      print(f"Considering: {data_file}...")
-      # hacky, but this is how we match CSEC1 format
-      if data_file.replace('.csv', '').replace('_', '') not in selected_sections:
-        continue
-      # proceed with dataset
-      print(f"Merging with {data_file}")
-      data_file = pd.read_csv(f'{folder_path}/{data_file}')
-      print(data_file.head())
-      # only keep columns we are supposed to
-      current_columns_to_keep = list(set(columns_to_keep_corrected).intersection(data_file.columns))
-      filtered_df_corrected = data_file[current_columns_to_keep]
-      # join the datasets
-      # Determine available merge keys
-      if result is None:
-         result = filtered_df_corrected
-      else:
-        merge_key = next((k for k in ['hhid', 'EA_code'] if k in result.columns and k in filtered_df_corrected.columns), None)
-        if not merge_key:
-            print(f"⚠️ No common key to merge on for {data_file}. Skipping.")
-            continue
-        result = result.merge(filtered_df_corrected, on=merge_key, how='outer')
-        # merge_keys = ['hhid', 'EA_code']
-        # left_keys = [k for k in merge_keys if k in result.columns] if result is not None else []
-        # right_keys = [k for k in merge_keys if k in filtered_df_corrected.columns]
+    merge_keys = ['player_handle', 'uid', 'user_id', 'player_id']
+    columns_to_keep_corrected += [k for k in merge_keys if k not in columns_to_keep_corrected]
 
-        # # Try merging on shared key
-        # merged = None
-        # for lk in left_keys:
-        #     for rk in right_keys:
-        #         try:
-        #             merged = result.merge(filtered_df_corrected, left_on=lk, right_on=rk, how='outer') if result is not None else filtered_df_corrected
-        #             print(f"Merged on {lk} ⇄ {rk}")
-        #             break
-        #         except Exception as e:
-        #             continue
-        #     if merged is not None:
-        #         break
+    print("List of (fuzzy) column codes to keep:", columns_to_keep_corrected)
 
-        # if merged is not None:
-        #     result = merged
-        # else:
-        #     print(f"⚠️ Could not merge with: {filtered_df_corrected.columns.tolist()}")
-        #     continue
+    result = None
+    data_sections = file_paths['data_sections']
 
-  if result is not None:
-    group_key = 'hhid' if 'hhid' in result.columns else 'EA_code' if 'EA_code' in result.columns else None
-    if group_key:
-        columns_to_agg = [col for col in result.columns if col.startswith(('h', 's')) and col != group_key]
-        result = result.groupby(group_key)[columns_to_agg].sum().reset_index()
+    for category in data_sections:
+        folder_path = data_sections[category]['folder_path']
+        for data_file in os.listdir(folder_path):
+            if not data_file.endswith(".csv"):
+                continue
+
+            print(f"Considering: {data_file}")
+            df = pd.read_csv(os.path.join(folder_path, data_file))
+
+            # ✅ Normalize all ID columns to 'player_id'
+            alias_keys = {
+                'player_code': 'player_id',
+                'user_id': 'player_id',
+                'uid': 'player_id',
+                'player_handle': 'player_id'
+            }
+            for old, new in alias_keys.items():
+                if old in df.columns:
+                    df.rename(columns={old: new}, inplace=True)
+                if result is not None and old in result.columns:
+                    result.rename(columns={old: new}, inplace=True)
+
+            # Ensure we keep the desired columns plus the merge key
+            current_columns = list(set(columns_to_keep_corrected + ['player_id']).intersection(df.columns))
+            filtered_df = df[current_columns]
+
+            # ✅ Merge logic using 'player_id'
+            if result is None:
+                result = filtered_df
+            else:
+                if 'player_id' not in result.columns or 'player_id' not in filtered_df.columns:
+                    print(f"⚠️ 'player_id' missing in one of the datasets. Skipping {data_file}.")
+                    continue
+                print(f"Merging on key: player_id")
+                result = result.merge(filtered_df, on='player_id', how='outer')
+
+    if result is not None:
+        group_key = next((k for k in merge_keys if k in result.columns), None)
+        if group_key:
+            columns_to_agg = [
+                col for col in result.select_dtypes(include='number').columns
+                if col != group_key
+            ]
+            result = result.groupby(group_key)[columns_to_agg].sum().reset_index()
+            print("Aggregated on:", group_key)
+        else:
+            print("⚠️ No valid group key found for aggregation.")
+
+        result = result.dropna(axis=1, how='all').drop_duplicates()
+
+        # move key to front if exists
+        for key in merge_keys:
+            if key in result.columns:
+                col = result.pop(key)
+                result.insert(0, key, col)
+
+        print("Filtered, aggregated, + merged dataset:")
+        print(result.head(10))
+
+        result_path = os.path.join(output_dir, 'generated_dataset.csv')
+        result.to_csv(result_path, index=False)
+        return {'success': True, 'filename': 'generated_dataset.csv'}
+
     else:
-        print("⚠️ No valid group key found for final aggregation.")
-
-      # if result is None:
-      #   result = filtered_df_corrected
-      # else:
-      #   try:
-      #     result = result.merge(filtered_df_corrected, left_on='hhid', right_on='hhid', how='outer')
-      #   except:
-      #     try:
-      #       result = result.merge(filtered_df_corrected, left_on='EA_code', right_on='hhid', how='outer')
-      #     except:
-      #       try:
-      #         result = result.merge(filtered_df_corrected, left_on='hhid', right_on='EA_code', how='outer')
-      #       except:
-      #         try:
-      #           result = result.merge(filtered_df_corrected, left_on='EA_code', right_on='EA_code', how='outer')
-      #           print("did this")
-      #         except:
-      #           print(filtered_df_corrected.columns, result.columns)
-
-      # columns_to_agg = [col for col in current_columns_to_keep if col.startswith('h') or col.startswith('s') and col != 'hhid']
-      # try:
-      #   result = result.groupby('hhid')[columns_to_agg].sum().reset_index(drop=False)
-      # except:
-      #   try:
-      #     result = result.groupby('EA_code')[columns_to_agg].sum().reset_index(drop=False)
-      #     print("did this too")
-      #   except:
-      #     continue
-
-    result.rename(columns=col_rename_map, inplace=True)
-    result.rename(columns={'hhid_y':'hhid'}, inplace=True)
-    result = result.dropna(axis=1, how='all') # drop columns where all values are NaN
-    result = result.drop(columns=[col for col in ['hhid_x'] if col in result.columns])
-    result = result.drop_duplicates()
-
-    for key in ['hhid', 'EA_code']:
-      if key in result.columns:
-          col = result.pop(key)
-          result.insert(0, key, col) # insert key col at beginning
-
-    # import ace_tools as tools; tools.display_dataframe_to_user(name="Filtered Household Data", dataframe=filtered_df_corrected)
-    print("Filtered, aggregated, + renamed dataset...")
-    result.head(10)
-    # ADD QUESTION TO HEADER
-
-    """# *Filtered + Aggregated + Merged Dataset Output*"""
-
-    print("List of (fuzzy) column codes to keep:", columns_to_keep_corrected, "\n")
-    print("Also renaming columns based on this map:", col_rename_map, "\n")
-    print("List of columns that were aggregated per household:", columns_to_agg, '\n')
-    
-    # save!
-    result_path = os.path.join(output_dir, 'generated_dataset.csv')
-    result.to_csv(result_path)
-  else: # if no result, return success with fail message
-    print("no similarities found :(")
-    return {'success': False, 'message': 'No similarities found. Dataset was not generated.'}
+        print("no similarities found :(")
+        return {'success': False, 'message': 'No similarities found. Dataset was not generated.'}
 
 
-  result = pd.read_csv('generated_dataset.csv')
-  reverse_map = {v: k for k, v in col_rename_map.items()}
-  result.rename(columns=reverse_map, inplace=True)
-  result.head()
+  # result = pd.read_csv('generated_dataset.csv')
+  # reverse_map = {v: k for k, v in col_rename_map.items()}
+  # result.rename(columns=reverse_map, inplace=True)
+  # result.head()
 
-  from typing import Optional, List
-  from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-  from pydantic import BaseModel, Field
+  # from typing import Optional, List
+  # from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+  # from pydantic import BaseModel, Field
 
 
-  # run the code
-  llm = init_chat_model("gpt-4o-mini", model_provider="openai")
-  coding_llm = llm.with_structured_output(schema=FunctionalCode)
+  # # run the code
+  # llm = init_chat_model("gpt-4o-mini", model_provider="openai")
+  # coding_llm = llm.with_structured_output(schema=FunctionalCode)
 
-  columns_kept = 'These are the columns in our dataset: ' + ', '.join(
-      [f'({key}, {item})' for (key, item) in col_rename_map.items() if key in columns_to_keep_corrected and key in result.columns]
-  )
-  print(columns_kept)
-  prompt = aggregation_code_gen_template.invoke({"text": '\n\n'.join([aggregation_instructions, columns_kept])})
-  print(prompt)
-  code = coding_llm.invoke(prompt) # column mapping in the language
-  print(code)
-  # code_run_output = run_code_and_capture_df(code, "agg_df")
-  # call function to convert run the code
+  # columns_kept = 'These are the columns in our dataset: ' + ', '.join(
+  #     [f'({key}, {item})' for (key, item) in col_rename_map.items() if key in columns_to_keep_corrected and key in result.columns]
+  # )
+  # print(columns_kept)
+  # prompt = aggregation_code_gen_template.invoke({"text": '\n\n'.join([aggregation_instructions, columns_kept])})
+  # print(prompt)
+  # code = coding_llm.invoke(prompt) # column mapping in the language
+  # print(code)
+  # # code_run_output = run_code_and_capture_df(code, "agg_df")
+  # # call function to convert run the code
 
-  full_code_string = code.imports.strip().replace('\n ', '\n') + '\n\n' + code.code.strip().replace('\n ', '\n')
-  print(full_code_string)
-  code_run_output = run_code_and_capture_df(full_code_string, "agg_df")
-  code_run_output
+  # full_code_string = code.imports.strip().replace('\n ', '\n') + '\n\n' + code.code.strip().replace('\n ', '\n')
+  # print(full_code_string)
+  # code_run_output = run_code_and_capture_df(full_code_string, "agg_df")
+  # code_run_output
 
-  df = pd.read_csv('generated_dataset.csv')
-  df.head()
+  # df = pd.read_csv('generated_dataset.csv')
+  # df.head()
 
-  """# Part 4: Data Cleaning
+  # """# Part 4: Data Cleaning
 
-  Not implemented. Will include:
-  - deduplication
-  - selection of highest-quality data points
-  - normalization across data sources.
-  """
+  # Not implemented. Will include:
+  # - deduplication
+  # - selection of highest-quality data points
+  # - normalization across data sources.
+  # """
 
-  return {'success': True, 'filename': 'generated_dataset.csv'}
+  # return {'success': True, 'filename': 'generated_dataset.csv'}

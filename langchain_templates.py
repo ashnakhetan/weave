@@ -31,7 +31,8 @@ translation_prompt_template = ChatPromptTemplate.from_messages(
         (
             "system",
             "You are an expert translation algorithm. "
-            "Please convert the given mapping from French (or the provided language) to English. "
+            "IF THE DATA IS GIVEN IN A LANGUAGE OTHER THAN ENGLISH, "
+            "Please convert the given mapping from that language (likely French) to English. "
             "If you do not know the translation of an attribute asked to translate, "
             "return null for the attribute's value.",
         ),
@@ -47,6 +48,7 @@ field_selection_prompt_template = ChatPromptTemplate.from_messages(
             "system",
             "You are an expert field selection algorithm. "
             "Given your instructions, please indicate whether or not you would include each field and WHY. "
+            "Be lenient and accept more than you would want to. "
             "If you do not know if a field is useful, "
             "do not select it, but explain your confusion. "
             "Output your answer as JSON that  "

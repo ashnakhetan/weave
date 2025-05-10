@@ -19,16 +19,17 @@ async def find_relevant_datasets(spec_file_path, dataset_details_path):
     import os
 
     specs = []
+    base_file_path = os.path.splitext(spec_file_path)[0]
     
     # Load specification file
-    if os.path.exists(spec_file_path + ".pdf"):
-        spec_file_path += ".pdf"
+    if os.path.exists(base_file_path + ".pdf"):
+        base_file_path += ".pdf"
         spec_loader = PyPDFLoader(spec_file_path)
         async for spec in spec_loader.alazy_load():
             specs.append(spec)
 
-    elif os.path.exists(spec_file_path + ".txt"):
-        spec_file_path += ".txt"
+    elif os.path.exists(base_file_path + ".txt"):
+        base_file_path += ".txt"
         spec_loader = TextLoader(spec_file_path)
         specs = [spec_loader.load()[0]]  # returns a list with one Document
 
@@ -103,14 +104,32 @@ async def find_relevant_datasets(spec_file_path, dataset_details_path):
         "dataset_descriptions": all_datasets
     })
 
-    return relevant_datasets, all_datasets
+    # postprocess to remove backticks
+    relevant_datasets = [line for line in relevant_datasets if not line.startswith("```")]
+
+    # extract just the filenames
+    dataset_names = extract_dataset_names_from_markdown(relevant_datasets)
+    return relevant_datasets, all_datasets, dataset_names
+
+
+# Clean and extract dataset names from markdown-formatted list of strings
+def extract_dataset_names_from_markdown(lines):
+    dataset_names = []
+    for line in lines:
+        if line.strip().startswith("|") and not line.strip().startswith("| File Name"):  # skip header
+            parts = line.strip().split("|")
+            if len(parts) > 1:
+                name = parts[1].strip()
+                if name and name != '----------------------':
+                    dataset_names.append(name)
+    return dataset_names
 
 
 async def analyze_datasets(spec_file, dataset_file):
-      relevant_files, all_datasets = await find_relevant_datasets(spec_file, dataset_file)
+      relevant_files, all_datasets, dataset_names = await find_relevant_datasets(spec_file, dataset_file)
 
       print("\n=== RELEVANT DATASET FILES ===")
-      for file in relevant_files:
+      for file in dataset_names:
           print(f"- {file}")
 
-      return relevant_files, all_datasets
+      return relevant_files, all_datasets, dataset_names
