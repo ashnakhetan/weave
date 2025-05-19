@@ -176,11 +176,13 @@ def run_part_3_transform_data(file_paths, output_dir):
     summary_csv_path = file_paths['summary_csv']
     selected_sections = file_paths['selected_sections']
     summary_df = pd.read_csv(summary_csv_path)
+    print("Summary DataFrame:", summary_df.head(10))
+    print("Selected sections:", selected_sections)
 
     columns_to_keep = list(summary_df[summary_df['is_selected'] == True]['column_code'])
     columns_to_keep_corrected = columns_to_keep.copy()
 
-    merge_keys = ['player_handle', 'uid', 'user_id', 'player_id']
+    merge_keys = ['player_handle', 'uid', 'user_id', 'player_id'] # eventually will be summary_df['merge_key'].unique()
     columns_to_keep_corrected += [k for k in merge_keys if k not in columns_to_keep_corrected]
 
     print("List of (fuzzy) column codes to keep:", columns_to_keep_corrected)

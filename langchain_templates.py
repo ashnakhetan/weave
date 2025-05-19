@@ -62,17 +62,60 @@ field_selection_prompt_template = ChatPromptTemplate.from_messages(
 
 ######## ------ PART 3: DATASET TRANSFORMATION (AGGREGATION) ------- #########
 
+# aggregation_code_gen_template = ChatPromptTemplate.from_messages(
+#     [
+#         (
+#             "system",
+#             "You are an expert data merging code generation algorithm. "
+#             "You are given context on what aggregated columns a final dataset should have. "
+#             "You are also given a list of attributes that we DO HAVE about a given household. Some information is per-person, not per-household. "
+#             "Our goal is to keep every attribute to be per-household. You need to decide what aggregations to perform to achieve this. "
+#             "You will write code specific to the GIVEN attributes to do this. ONLY use this information, as we do not have access to other info. "
+#             "If you do not know how to aggregate something, "
+#             "leave it and put a note about it in the prefix.",
+#         ),
+#         ("human", "{text}"),
+#     ]
+# )
+
+
+# aggregation_code_gen_template = ChatPromptTemplate.from_messages(
+#     [
+#         (
+#             "system",
+#             "You are an expert data merging code generation algorithm. "
+#             "You are given context on what aggregated columns a final dataset should have. "
+#             "You are also given a list of attributes that we DO HAVE about a given entity. Some information is per-person, not per-household. "
+#             "Our goal is to keep every attribute to be per-household. You need to decide what aggregations to perform to achieve this. "
+#             "You will write code specific to the GIVEN attributes to do this. ONLY use this information, as we do not have access to other info. "
+#             "If you do not know how to aggregate something, "
+#             "leave it and put a note about it in the prefix.",
+#         ),
+#         ("human", "{text}"),
+#     ]
+# )
 aggregation_code_gen_template = ChatPromptTemplate.from_messages(
     [
         (
             "system",
-            "You are an expert data merging code generation algorithm. "
-            "You are given context on what aggregated columns a final dataset should/might have. "
-            "You are also given a list of attributes that we DO HAVE about a given household. Some information is per-person, not per-household. "
-            "Our goal is to keep every attribute to be per-household. You need to decide what aggregations to perform to achieve this. "
-            "You will write code specific to the GIVEN attributes to do this. ONLY use this information, as we do not have access to other info. "
-            "If you do not know how to aggregate something, "
-            "leave it and put a note about it in the prefix.",
+            "You are an expert data transformation and aggregation algorithm. "
+            "Your task is to generate Python code (using pandas) to convert a dataset into a per-entity format, such as per-household or per-player. "
+            "You are given a list of column names we already have. Some columns may be per-individual or row-wise and need to be aggregated. "
+            "You will write code that intelligently aggregates these columns to produce one row per entity (e.g., per player or household). "
+            "Only use the columns that are provided. If a column cannot be aggregated, leave a note in the code comments but do not guess."
+
+            "\n\nExample:\n"
+            "If we have a table with columns [player_id, asset_type, quantity], where each row shows how many of each asset a player owns, "
+            "then we should convert this into one row per player with a separate column for each asset:\n"
+            "- 'num_sword', 'num_shield', 'num_potion', etc.\n"
+            "- The code to do this would involve pivoting on asset_type and summing quantity."
+
+            "\n\nWhen in doubt, favor:\n"
+            "- `.groupby(...).sum()` or `.mean()` for numeric fields\n"
+            "- `.pivot_table()` for row-wise entity-type tables\n"
+            "- `.drop_duplicates()` if the rows are redundant"
+
+            "\n\nOutput only Python code, no extra text.",
         ),
         ("human", "{text}"),
     ]

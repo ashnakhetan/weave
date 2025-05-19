@@ -142,6 +142,8 @@ def view_selected_fields():
 @app.route('/transform-data', methods=['POST'])
 def transform_data():
     # first get files, then pass them through
+    print("Transforming data...", flush=True)
+    print("Session data:", session, flush=True)
     saved_files = {
         'task_description': session.get('task_description'),
         'data_documentation': session.get('data_documentation'),
