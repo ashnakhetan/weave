@@ -199,7 +199,7 @@ def load_sample_data():
 
     data_sections = {}
 
-    sections = [dir_name for dir_name in os.listdir(f'{SAMPLE_DATA_FOLDER}') if not dir_name.startswith('task_description') and not dir_name.startswith('data_documentation')]
+    sections = [dir_name for dir_name in os.listdir(f'{SAMPLE_DATA_FOLDER}') if not dir_name.startswith('task_description') and not dir_name.startswith('data_documentation') and not dir_name.startswith('.')]
     for section_name in sections:
         section_path = os.path.join(SAMPLE_DATA_FOLDER, section_name)
         dest_path = os.path.join(UPLOAD_FOLDER, section_name)
