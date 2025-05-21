@@ -11,6 +11,7 @@ STATIC_FOLDER = os.getenv("STATIC_FOLDER") or 'static'
 INDEX_FILE = os.getenv("INDEX_FILE") or 'index.html'
 RESULT_FILE = os.getenv('RESULT_FILE') or 'generated_dataset.csv'
 SAMPLE_DATA_FOLDER = os.getenv('SAMPLE_DATA_FOLDER') or 'sample_data'
+METADATA_FOLDER = os.getenv('METADATA_FOLDER') or 'metadata'
 
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(RESULT_FOLDER, exist_ok=True)
@@ -122,7 +123,17 @@ def submit_part_1():
         'data_sections': session.get('data_sections')
     }
     print(f"Saved files: {saved_files}", flush=True)
-    result = pipeline.run_part_1_2_module_field_selection(saved_files, RESULT_FOLDER)
+    # FOR NOW, TO TEST:
+    # result = pipeline.run_part_1_2_module_field_selection(saved_files, RESULT_FOLDER)
+    import pandas as pd
+
+    summary_df = pd.read_csv(os.path.join(RESULT_FOLDER, METADATA_FOLDER, 'summary.csv'))
+    result = {
+        'success': True,
+        'summary_csv': os.path.join(RESULT_FOLDER, METADATA_FOLDER, 'summary.csv'),
+        'question_map_csv': os.path.join(RESULT_FOLDER, METADATA_FOLDER, 'question_map.csv'),
+        'selected_sections': list([]),
+        'field_summary': summary_df.head(10).to_dict(orient='records')}
 
     if result.get('success'):
         session['part_1_result'] = result

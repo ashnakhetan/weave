@@ -345,5 +345,5 @@ aggregation_instructions = """These are the suggested aggregated columns for tra
 Columns you will ALWAYS need are:
 - player_id
 
-The dataset to transform is called generated_dataset.csv.
+The dataset to transform is found at {data_file_path}.
 """

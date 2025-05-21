@@ -16,9 +16,9 @@ import google.generativeai as genai
 import nest_asyncio
 import asyncio
 
-from langchain_templates import info_extraction_prompt_template, translation_prompt_template, field_selection_prompt_template, aggregation_code_gen_template
+from langchain_templates import info_extraction_prompt_template, translation_prompt_template, field_selection_prompt_template, aggregation_code_gen_template, column_rename_mapping_template
 from models.models import Category
-from models.return_models import ColumnMapping, ColumnSelectionMapping, FunctionalCode
+from models.return_models import ColumnMapping, ColumnSelectionMapping, FunctionalCode, ColumnRenameMapping
 from instructions import column_mapping_instructions, field_selection_instructions, aggregation_instructions
 
 from langchain.chat_models import init_chat_model
@@ -28,6 +28,8 @@ from modules.p1 import analyze_datasets, find_relevant_datasets
 UPLOAD_FOLDER = os.getenv("UPLOAD_FOLDER") or 'uploads'
 SUMMARY_PATH = 'summary.csv'
 STATIC_FOLDER = os.getenv("STATIC_FOLDER") or 'static'
+OUTPUT_METADATA_PATH = 'metadata'
+llm = init_chat_model("gpt-4o-mini", model_provider="openai")
 
 def run_part_1_2_module_field_selection(file_paths, output_dir):
   """ Check inputs  """
@@ -72,7 +74,6 @@ def run_part_1_2_module_field_selection(file_paths, output_dir):
   section_pdf_page_maps = {}
   list_reasons = []
 
-  llm = init_chat_model("gpt-4o-mini", model_provider="openai")
   mapping_llm = llm.with_structured_output(schema=ColumnMapping)
   selection_llm = llm.with_structured_output(schema=ColumnSelectionMapping)
 
@@ -108,7 +109,7 @@ def run_part_1_2_module_field_selection(file_paths, output_dir):
       prompt = info_extraction_prompt_template.invoke({"text": '\n\n'.join([section_text, column_mapping_instructions, * section_questionnaire_pages])})
       mapping = mapping_llm.invoke(prompt) # column mapping in the language
       prompt = translation_prompt_template.invoke({"text": mapping})
-      mapping = mapping_llm.invoke(prompt) # column mapping in English
+      mapping = mapping_llm.invoke(prompt) # column mapping in English SHOULD THIS BE TRANSLATION LLM (BUG?)
       section_question_mappings[mapping.section_name] = mapping
 
       # now, select relevant fields
@@ -173,11 +174,13 @@ def run_part_3_transform_data(file_paths, output_dir):
     import pandas as pd
     import os
 
+    renaming_llm = llm.with_structured_output(schema=ColumnRenameMapping)
+
     summary_csv_path = file_paths['summary_csv']
-    selected_sections = file_paths['selected_sections']
+    # selected_sections = file_paths['selected_sections']
     summary_df = pd.read_csv(summary_csv_path)
     print("Summary DataFrame:", summary_df.head(10))
-    print("Selected sections:", selected_sections)
+    # print("Selected sections:", selected_sections)
 
     columns_to_keep = list(summary_df[summary_df['is_selected'] == True]['column_code'])
     columns_to_keep_corrected = columns_to_keep.copy()
@@ -197,9 +200,10 @@ def run_part_3_transform_data(file_paths, output_dir):
                 continue
 
             print(f"Considering: {data_file}")
-            df = pd.read_csv(os.path.join(folder_path, data_file))
+            data_file_path = os.path.join(folder_path, data_file)
+            df = pd.read_csv(data_file_path)
 
-            # ✅ Normalize all ID columns to 'player_id'
+            # ✅ Normalize all ID columns to 'player_id' -> this can be LLMized too
             alias_keys = {
                 'player_code': 'player_id',
                 'user_id': 'player_id',
@@ -215,17 +219,39 @@ def run_part_3_transform_data(file_paths, output_dir):
             # Ensure we keep the desired columns plus the merge key
             current_columns = list(set(columns_to_keep_corrected + ['player_id']).intersection(df.columns))
             filtered_df = df[current_columns]
+            filtered_data_file_path = os.path.join(output_dir, OUTPUT_METADATA_PATH, data_file)
+            filtered_df.to_csv(filtered_data_file_path, index=False)
+
+            # same thing with other columns; rename them
+            if result is not None:
+              prompt = info_extraction_prompt_template.invoke({"text": '\n\n'.join([f"Current columns: {filtered_df.columns}", f"Reference columns: {result.columns}"])})
+              mapping = renaming_llm.invoke(prompt) # column mapping in the language
+              print("Mapping to rename columns:", mapping)
+              mapping = mapping.mappings
+              if mapping is not None:
+                for old, new in mapping.items():
+                  if old in filtered_df.columns:
+                      filtered_df.rename(columns={old: new}, inplace=True)
+                  if result is not None and old in result.columns:
+                      result.rename(columns={old: new}, inplace=True)
+
+            # Aggregate/pivot the data if needed
+            filtered_aggregated_df = aggregate_data(filtered_df, filtered_data_file_path)
+            print("filtered_aggregated_df", type(filtered_aggregated_df), filtered_aggregated_df.head(10))
 
             # ✅ Merge logic using 'player_id'
             if result is None:
-                result = filtered_df
+                result = filtered_aggregated_df
             else:
-                if 'player_id' not in result.columns or 'player_id' not in filtered_df.columns:
+                if 'player_id' not in result.columns or 'player_id' not in filtered_aggregated_df.columns:
                     print(f"⚠️ 'player_id' missing in one of the datasets. Skipping {data_file}.")
                     continue
                 print(f"Merging on key: player_id")
-                result = result.merge(filtered_df, on='player_id', how='outer')
+                result = result.merge(filtered_aggregated_df, on='player_id', how='outer')
 
+    # Merging done, time to aggregate
+
+    # basic aggregation for merge_key + numeric columns
     if result is not None:
         group_key = next((k for k in merge_keys if k in result.columns), None)
         if group_key:
@@ -258,38 +284,42 @@ def run_part_3_transform_data(file_paths, output_dir):
         return {'success': False, 'message': 'No similarities found. Dataset was not generated.'}
 
 
-  # result = pd.read_csv('generated_dataset.csv')
+def aggregate_data(dataset, data_file_path):
+  """ Take in a dataset and return a new dataset with the same columns, but aggregated, or the same if no aggregation is needed. """
+
+  # reverse if we already renamed columns
   # reverse_map = {v: k for k, v in col_rename_map.items()}
   # result.rename(columns=reverse_map, inplace=True)
   # result.head()
 
-  # from typing import Optional, List
-  # from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-  # from pydantic import BaseModel, Field
-
+  from typing import Optional, List
+  from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+  from pydantic import BaseModel, Field
 
   # # run the code
-  # llm = init_chat_model("gpt-4o-mini", model_provider="openai")
-  # coding_llm = llm.with_structured_output(schema=FunctionalCode)
+  coding_llm = llm.with_structured_output(schema=FunctionalCode)
+
+  columns_kept = list(dataset.columns)
+  columns_kept_instruction = 'These are the ONLY columns in our dataset: ' + ', '.join(columns_kept)
 
   # columns_kept = 'These are the columns in our dataset: ' + ', '.join(
   #     [f'({key}, {item})' for (key, item) in col_rename_map.items() if key in columns_to_keep_corrected and key in result.columns]
   # )
-  # print(columns_kept)
-  # prompt = aggregation_code_gen_template.invoke({"text": '\n\n'.join([aggregation_instructions, columns_kept])})
+  print("Current dataset columns: ", columns_kept)
+
+  # CREATE THE AGGREGATION INSTRUCTIONS AS WELL (SPECS)
+  aggregation_instructions_complete = aggregation_instructions.format(data_file_path=data_file_path)
+  prompt = aggregation_code_gen_template.invoke({"text": '\n\n'.join([aggregation_instructions_complete, columns_kept_instruction])})
   # print(prompt)
-  # code = coding_llm.invoke(prompt) # column mapping in the language
-  # print(code)
-  # # code_run_output = run_code_and_capture_df(code, "agg_df")
-  # # call function to convert run the code
+  code = coding_llm.invoke(prompt) # column mapping in the language
+  full_code_string = code.imports.strip().replace('\n ', '\n') + '\n\n' + code.code.strip().replace('\n ', '\n')
+  print("Full Code Output: \n", full_code_string)
+  aggregated_dataset = run_code_and_capture_df(full_code_string, "agg_df")
+  print("Aggregated dataset:", aggregated_dataset)
+  aggregated_dataset = aggregated_dataset['dataframe']
+  print("Output from running the code:", aggregated_dataset.head(10))
 
-  # full_code_string = code.imports.strip().replace('\n ', '\n') + '\n\n' + code.code.strip().replace('\n ', '\n')
-  # print(full_code_string)
-  # code_run_output = run_code_and_capture_df(full_code_string, "agg_df")
-  # code_run_output
-
-  # df = pd.read_csv('generated_dataset.csv')
-  # df.head()
+  return aggregated_dataset
 
   # """# Part 4: Data Cleaning
 

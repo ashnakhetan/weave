@@ -1,5 +1,5 @@
 # This file contains classes to define the return type for GenAI requests.
-from typing import Optional, List
+from typing import Optional, List, Dict
 from pydantic import BaseModel, Field
 
 ######## ------ PART 2: RELEVANT FIELD SELECTION ------- #########
@@ -26,7 +26,30 @@ class ColumnMapping(BaseModel):
         default=None, description="A list of the mappings from column name to the question or survey field associated with it"
     )
 
-#     section_name: SECTION 0: HOUSEHOLD IDENTIFICATION AND CONTROL INFORMATION
+class ColumnRenameMapping(BaseModel):
+    """Provide a mapping of the columns to be renamed.
+    Example:
+    {
+    "user_id": "uid",
+    "s01q02": "s01q02",
+    "player_sentiment": "player_sentiment"
+    }
+    """
+    mappings: Optional[Dict[str, str]] = Field(
+        default=None,
+        description="A dictionary that maps column names to their renamed versions"
+    )
+
+    class Config:
+        schema_extra = {
+            "properties": {
+                "mappings": {
+                    "type": "object",
+                    "additionalProperties": {"type": "string"}
+                }
+            }
+        }
+
 class ColumnSelectionReasoning(BaseModel):
     """Decide which columns are relevant to the task and provide reasoning for all columns.
     Example:
@@ -63,5 +86,6 @@ class FunctionalCode(BaseModel):
     code: Code block not including import statements
     """
     prefix: Optional[str] = Field(default=None, description="Description of the problem and approach")
+    # code_required: Optional[bool] = Field(default=None, description="Whether or not the code is required")
     imports: Optional[str] = Field(default=None, description="Code block import statements")
     code: Optional[str] = Field(default=None, description="Code block not including import statements")

@@ -102,6 +102,8 @@ aggregation_code_gen_template = ChatPromptTemplate.from_messages(
             "Your task is to generate Python code (using pandas) to convert a dataset into a per-entity format, such as per-household or per-player. "
             "You are given a list of column names we already have. Some columns may be per-individual or row-wise and need to be aggregated. "
             "You will write code that intelligently aggregates these columns to produce one row per entity (e.g., per player or household). "
+            "IN THE CODE, PLEASE PLACE PERIODIC PRINT STATEMENTS TO HELP DEBUGGING. "
+            "You must define a variable named `agg_df` as the final result. Do not print it, just have it."
             "Only use the columns that are provided. If a column cannot be aggregated, leave a note in the code comments but do not guess."
 
             "\n\nExample:\n"
@@ -116,6 +118,35 @@ aggregation_code_gen_template = ChatPromptTemplate.from_messages(
             "- `.drop_duplicates()` if the rows are redundant"
 
             "\n\nOutput only Python code, no extra text.",
+        ),
+        ("human", "{text}"),
+    ]
+)
+
+
+column_rename_mapping_template = ChatPromptTemplate.from_messages(
+    [
+        (
+            "system",
+            "You are a schema-matching assistant that identifies semantically equivalent column names across datasets. "
+            "You are given two lists of column names: one from a source dataset and one from a target dataset. "
+            "Your job is to determine if any column in the source set refers to the same concept as a column in the target set, even if the names are different. "
+
+            "You must return a Python dictionary that maps source column names to the corresponding target column names. "
+            "Only include mappings if the source and target columns clearly represent the same concept. "
+            "Do not guess. If no match exists for a source column, do not include it in the mapping."
+
+            "\n\nExample:\n"
+            "Given:\n"
+            "source_columns = ['clicks_total', 'session_time', 'user_id']\n"
+            "target_columns = ['num_clicks', 'time_spent', 'player_id']\n"
+            "Return:\n"
+            "{\n"
+            "  'clicks_total': 'num_clicks',\n"
+            "  'session_time': 'time_spent'\n"
+            "}"
+
+            "\n\nReturn only the Python dictionary. No explanations or extra text.",
         ),
         ("human", "{text}"),
     ]
